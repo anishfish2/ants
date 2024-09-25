@@ -1,10 +1,11 @@
 import environment
+import navigation_env
 import neat
 import os
 
 
 def eval_genomes(genomes, config):
-    env = environment.parallel_env(render_mode="cpu")
+    env = navigation_env.parallel_env(render_mode="cpu")
 
     for genome_id, genome in genomes:
         observations, infos = env.reset()
@@ -18,7 +19,7 @@ def eval_genomes(genomes, config):
     env.close()
 
 def view_winner(winner, config):
-    env = environment.parallel_env(render_mode="video")
+    env = navigation_env.parallel_env(render_mode="video")
 
     observations, infos = env.reset()
     winner.fitness = 0
@@ -42,11 +43,11 @@ def run(config_file):
     p.add_reporter(neat.StdOutReporter(True))
     stats = neat.StatisticsReporter()
     p.add_reporter(stats)
-    p.add_reporter(neat.Checkpointer(5))
+    # p.add_reporter(neat.Checkpointer(5))
 
-    winner = p.run(eval_genomes, 250)
+    winner = p.run(eval_genomes, 100)
 
-    print('\nBest genome:\n{!s}'.format(winner))
+    # print('\nBest genome:\n{!s}'.format(winner))
 
     view_winner(winner, config)
 
