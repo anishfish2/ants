@@ -14,7 +14,7 @@ import os
 
 
 num_steps = 25
-render_mode = "human"
+render_mode = "video"
 size = 50
 num_agents = 1
 

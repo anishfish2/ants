@@ -1,11 +1,12 @@
 import environment
 import navigation_env
+import foraging_env
 import neat
 import os
 
 
 def eval_genomes(genomes, config):
-    env = navigation_env.parallel_env(render_mode="cpu")
+    env = foraging_env.parallel_env(render_mode="cpu")
 
     for genome_id, genome in genomes:
         observations, infos = env.reset()
@@ -15,21 +16,23 @@ def eval_genomes(genomes, config):
             actions = {agent: net.activate(env.state[agent]) for agent in env.agents}
 
             observations, rewards, terminations = env.step(actions)
+
             genome.fitness += sum(rewards.values())
     env.close()
 
 def view_winner(winner, config):
-    env = navigation_env.parallel_env(render_mode="video")
+    env = foraging_env.parallel_env(render_mode="video")
 
     observations, infos = env.reset()
     winner.fitness = 0
     net = neat.nn.FeedForwardNetwork.create(winner, config)
+    done = False
     while env.agents:
         actions = {agent: net.activate(env.state[agent]) for agent in env.agents}
         observations, rewards, terminations = env.step(actions)
         winner.fitness += sum(rewards.values())
     print(f"Winner fitness: {winner.fitness}")
-    print('\Winner genome:\n{!s}'.format(winner))
+    # print('\Winner genome:\n{!s}'.format(winner))
 
     env.close()
 
@@ -53,5 +56,5 @@ def run(config_file):
 
 if __name__ == '__main__':
     local_dir = os.path.dirname(__file__)
-    config_path = os.path.join(local_dir, 'configs/default_config.txt')
+    config_path = os.path.join(local_dir, 'configs/foraging_config.txt')
     run(config_path)
