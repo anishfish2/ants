@@ -2,7 +2,6 @@ import functools
 
 import gymnasium
 from gymnasium.spaces import Discrete
-
 from pettingzoo import ParallelEnv
 from pettingzoo.utils import parallel_to_aec, wrappers
  

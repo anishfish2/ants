@@ -6,25 +6,27 @@ from gymnasium.spaces import Discrete
 from pettingzoo import ParallelEnv
 from pettingzoo.utils import parallel_to_aec, wrappers
 
-from agent import ant
+from ant import ant
 import matplotlib.pyplot as plt
 import numpy as np 
 import cv2
 import os
 import re
 import math
+from food import food
 
+# Default Constants
 num_steps = 100
 render_mode = "human"
 size = 50
-num_agents = 1
+num_ants = 1
 num_food = 1
 range_radius = 10
 
 
-def distance(agent_pos, food_pos):
-            """Calculate the Euclidean distance between the agent and food."""
-            return math.sqrt((food_pos['x'] - agent_pos['x']) ** 2 + (food_pos['y'] - agent_pos['y']) ** 2)
+def distance(ant_pos, food_pos):
+            """Calculate the Euclidean distance between the ant and food."""
+            return math.sqrt((food_pos['x'] - ant_pos['x']) ** 2 + (food_pos['y'] - ant_pos['y']) ** 2)
 
 def get_observations(ant, food_list, range_limit):
     """Return the closest food distances in 8 directional sections around the ant within a given range."""
@@ -50,40 +52,29 @@ def get_observations(ant, food_list, range_limit):
 
     return observations
 
-class food():
-    def __init__(self):
-        self.location = {'x': np.random.randint(-size, size), 'y': np.random.randint(-size, size)}
-        self.picked_up = False
-
-    def __init__(self, location):
-        self.location = location
-        self.picked_up = False
-    
 class parallel_env(ParallelEnv):
     metadata = {"render_modes": ["human"], "name": "rps_v2"}
 
-    def __init__(self, render_mode=None):
+    def __init__(self, render_mode=None, num_ants=1, num_food=1, size=50, num_steps=100, range_radius=10):
         """
         The init method takes in environment arguments and should define the following attributes:
-        - possible_agents
+        - ants
         - render_mode
+        - food
+        - size
+        - num_steps
+        - ant_range_radius
         """
-
-        self.possible_agents = [ant() for _ in range(num_agents)]
-        self.food = [ food({'x': -34, 'y': 22}),
-                    food({'x': 10, 'y': -45}),
-                    food({'x': 7, 'y': 31}),
-                    food({'x': -50, 'y': 12}),
-                    food({'x': 25, 'y': -5}),
-                    food({'x': -12, 'y': 48}),
-                    food({'x': 39, 'y': -17}),
-                    food({'x': -26, 'y': -30}),
-                    food({'x': 15, 'y': 15}),
-                    food({'x': 44, 'y': 5}),
-                    ]
-
-        self.agent_name_mapping = dict(
-            zip(self.possible_agents, list(range(len(self.possible_agents))))
+        self.num_food = num_food
+        self.ants = [ant() for _ in range(num_ants)]
+        self.food = [food() for _ in range(num_food)]
+        self.size = size
+        self.step_count = 0
+        self.num_steps = num_steps
+        self.ant_range_radius = range_radius
+        
+        self.ant_name_mapping = dict(
+            zip(self.ants, list(range(len(self.ants))))
         )
         self.render_mode = render_mode
         if self.render_mode == 'human':
@@ -92,15 +83,16 @@ class parallel_env(ParallelEnv):
             self.scatter = self.ax.scatter([], [], s=100)
             self.food_scatter = self.ax.scatter([], [], s=100, color='green')
             self.quiver = self.ax.quiver([], [], [], [], scale=50, color='red')  
-            self.ax.set_xlim(-size, size)
-            self.ax.set_ylim(-size, size)
+            self.ax.set_xlim(-self.size, self.size)
+            self.ax.set_ylim(-self.size, self.size)
+
 
     @functools.lru_cache(maxsize=None)
-    def observation_space(self, agent):
+    def observation_space(self, ant):
         return Discrete(8)
 
     @functools.lru_cache(maxsize=None)
-    def action_space(self, agent):
+    def action_space(self, ant):
         return Discrete(8)
 
     def render(self):
@@ -112,10 +104,10 @@ class parallel_env(ParallelEnv):
             gymnasium.logger.warn("You are calling render method without specifying any render mode.")
             return
         elif self.render_mode == "human":
-            x = [agent.location['x'] for agent in self.agents]
-            y = [agent.location['y'] for agent in self.agents]
-            u = [np.cos(np.deg2rad(agent.current_angle)) for agent in self.agents] 
-            v = [np.sin(np.deg2rad(agent.current_angle)) for agent in self.agents]
+            x = [ant.location['x'] for ant in self.ants]
+            y = [ant.location['y'] for ant in self.ants]
+            u = [np.cos(np.deg2rad(ant.current_angle)) for ant in self.ants] 
+            v = [np.sin(np.deg2rad(ant.current_angle)) for ant in self.ants]
             z_1 = [food.location['x'] for food in self.food]
             z_2 = [food.location['y'] for food in self.food]
             self.scatter.set_offsets(np.c_[x, y])
@@ -139,92 +131,87 @@ class parallel_env(ParallelEnv):
 
     def reset(self, seed=None, options=None):
         """
-        Reset needs to initialize the `agents` attribute and must set up the
+        Reset needs to initialize the `ants` attribute and must set up the
         environment so that render(), and step() can be called without issues.
         Here it initializes the `num_moves` variable which counts the number of
         hands that are played.
-        Returns the observations for each agent
+        Returns the observations for each ant
         """
-        self.agents = [ant() for _ in range(num_agents)]
-        self.food = [ food({'x': -34, 'y': 22}),
-                    food({'x': 10, 'y': -45}),
-                    food({'x': 7, 'y': 31}),
-                    food({'x': -50, 'y': 12}),
-                    food({'x': 25, 'y': -5}),
-                    food({'x': -12, 'y': 48}),
-                    food({'x': 39, 'y': -17}),
-                    food({'x': -26, 'y': -30}),
-                    food({'x': 15, 'y': 15}),
-                    food({'x': 44, 'y': 5}),
-                    ] 
+        self.ants = [ant() for _ in range(num_ants)]
+        self.food = [] 
         self.food_location_log = {food: [food.location.copy()] for food in self.food}
-        self.agent_location_log = {agent: [agent.location] for agent in self.agents}
-        self.agent_angle_log = {agent: [agent.current_angle] for agent in self.agents}
+        self.ant_location_log = {ant: [ant.location] for ant in self.ants}
+        self.ant_angle_log = {ant: [ant.current_angle] for ant in self.ants}
+        self.step_count = 0
 
-        self.num_moves = 0
         observations = {
-            self.agents[i]: get_observations(self.agents[i], self.food, range_radius) for i in range(len(self.agents))
+            self.ants[i]: get_observations(self.ants[i], self.food, self.ant_range_radius) for i in range(len(self.ants))
         } 
-        infos = {agent: {} for agent in self.agents}
+        infos = {ant: {} for ant in self.ants}
         self.state = observations
 
         return observations, infos
 
     def step(self, actions):
         """
-        step(action) takes in an action for each agent and should return the
+        step(action) takes in an action for each ant and should return the
         - observations
         - rewards
         - terminations
         - truncations
         - infos
-        dicts where each dict looks like {agent_1: item_1, agent_2: item_2}
+        dicts where each dict looks like {ant_1: item_1, ant_2: item_2}
         """
+
+        self.step_count += 1
+
+        if self.step_count >= self.num_steps:
+            self.ants = None
+            return {}, {}, {}
+        
         if not actions:
-            self.agents = []
-            return {}, {}, {}, {}, {}
+            self.ants = []
+            return {}, {}, {}
 
-        terminations = {agent: False for agent in self.agents}
+        terminations = {ant: False for ant in self.ants}
 
-        self.num_moves += 1
-
-        # Handle the actions of each agent
-        agent_previous_location = {agent: agent.location.copy() for agent in self.agents}
-        for agent in self.agents:
-            self.agent_location_log[agent].append(agent.location.copy())
-            self.agent_angle_log[agent].append(agent.current_angle) 
-            action = np.argmax(actions[agent])
+        # Handle the actions of each ant
+        ant_previous_location = {ant: ant.location.copy() for ant in self.ants}
+        for ant in self.ants:
+            self.ant_location_log[ant].append(ant.location.copy())
+            self.ant_angle_log[ant].append(ant.current_angle) 
+            action = np.argmax(actions[ant])
             if action == 0:
-                agent.update_angle(np.pi / 4)
+                ant.update_angle(np.pi / 4)
             elif action == 1:
-                agent.update_angle(-np.pi / 4)
+                ant.update_angle(-np.pi / 4)
             elif action == 2:
-                agent.update_location(1)
-                if agent.location['x'] <= size and agent.location['y'] <= size and agent.location['x'] >= -size and agent.location['y'] >= -size:
+                ant.update_location(1)
+                if ant.location['x'] <= size and ant.location['y'] <= size and ant.location['x'] >= -size and ant.location['y'] >= -size:
                     continue
                 else:
-                    agent.update_location(-1)
+                    ant.update_location(-1)
             elif action == 3:
-                agent.update_location(-1)
-                if agent.location['x'] <= size and agent.location['y'] <= size and agent.location['x'] >= -size and agent.location['y'] >= -size:
+                ant.update_location(-1)
+                if ant.location['x'] <= size and ant.location['y'] <= size and ant.location['x'] >= -size and ant.location['y'] >= -size:
                     continue
                 else:
-                    agent.update_location(1)
+                    ant.update_location(1)
 
         observations = {
-            self.agents[i]: get_observations(self.agents[i], self.food, range_radius) for i in range(len(self.agents))
+            self.ants[i]: get_observations(self.ants[i], self.food, self.ant_range_radius) for i in range(len(self.ants))
         }
         self.state = observations
 
-        rewards = {agent: 0 for agent in self.agents}
+        rewards = {ant: 0 for ant in self.ants}
 
-        # Check if the agent has picked up food
+        # Check if the ant has picked up food
         for food in self.food:
             if not food.picked_up:
-                for agent in self.agents:
-                    if np.linalg.norm(np.array((food.location['x'], food.location['y'])) - np.array((agent.location['x'], agent.location['y']))) < 1:
+                for ant in self.ants:
+                    if np.linalg.norm(np.array((food.location['x'], food.location['y'])) - np.array((ant.location['x'], ant.location['y']))) < 1:
                         food.picked_up = True
-                        rewards[agent] = 100
+                        rewards[ant] = 100
                 self.food_location_log[food].append(food.location.copy())
 
         
@@ -234,7 +221,7 @@ class parallel_env(ParallelEnv):
         if env_truncation:
             if self.render_mode == "video":
                 self.make_video()
-            self.agents = []
+            self.ants = []
 
         if self.render_mode == "human":
             self.render()
@@ -242,34 +229,31 @@ class parallel_env(ParallelEnv):
         return observations, rewards, terminations
     
     def make_video(self):
-        for food in self.food:
-            print(f"Food location: {self.food_location_log[food]}")
-            print("Food picked up: ", food.picked_up)
         if self.render_mode == "video":
             frames_dir = "frames"
             os.makedirs(frames_dir, exist_ok=True)
-            for i, frame in enumerate(self.agent_location_log[self.agents[0]]):
+            for i, frame in enumerate(self.ant_location_log[self.ants[0]]):
                 fig, ax = plt.subplots()
                 
-                for agent in self.agents:
-                    # Draw the circle for each agent's range
-                    circle = plt.Circle((self.agent_location_log[agent][i]['x'], self.agent_location_log[agent][i]['y']),
+                for ant in self.ants:
+                    # Draw the circle for each ant's range
+                    circle = plt.Circle((self.ant_location_log[ant][i]['x'], self.ant_location_log[ant][i]['y']),
                                         range_radius, color='blue', fill=False, linestyle='--')
                     ax.add_artist(circle)
 
-                    # Draw the section lines for each agent
+                    # Draw the section lines for each ant
                     for section in range(8):
-                        angle = section * np.pi/4 + self.agent_angle_log[agent][i]  # Adjust based on agent's current angle
-                        x_end = self.agent_location_log[agent][i]['x'] + range_radius * np.cos(angle)
-                        y_end = self.agent_location_log[agent][i]['y'] + range_radius * np.sin(angle)
-                        ax.plot([self.agent_location_log[agent][i]['x'], x_end],
-                                [self.agent_location_log[agent][i]['y'], y_end],
+                        angle = section * np.pi/4 + self.ant_angle_log[ant][i]  # Adjust based on ant's current angle
+                        x_end = self.ant_location_log[ant][i]['x'] + range_radius * np.cos(angle)
+                        y_end = self.ant_location_log[ant][i]['y'] + range_radius * np.sin(angle)
+                        ax.plot([self.ant_location_log[ant][i]['x'], x_end],
+                                [self.ant_location_log[ant][i]['y'], y_end],
                                 color='orange', linestyle='--')
-                    ax.scatter(self.agent_location_log[agent][i]['x'], self.agent_location_log[agent][i]['y'])
-                    angle_rad = self.agent_angle_log[agent][i]
+                    ax.scatter(self.ant_location_log[ant][i]['x'], self.ant_location_log[ant][i]['y'])
+                    angle_rad = self.ant_angle_log[ant][i]
                     ax.quiver(
-                        self.agent_location_log[agent][i]['x'],
-                        self.agent_location_log[agent][i]['y'],
+                        self.ant_location_log[ant][i]['x'],
+                        self.ant_location_log[ant][i]['y'],
                         np.cos(angle_rad),
                         np.sin(angle_rad),
                         scale=20,

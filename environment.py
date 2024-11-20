@@ -6,7 +6,7 @@ from gymnasium.spaces import Discrete, Box
 from pettingzoo import ParallelEnv
 from pettingzoo.utils import parallel_to_aec, wrappers
 
-from agent import ant
+from ant import ant
 import matplotlib.pyplot as plt
 import numpy as np 
 import cv2
