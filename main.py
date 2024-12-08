@@ -2,6 +2,7 @@ import environment
 import navigation_env
 import foraging_env
 import neat
+from TDNN import TDNN
 import os
 import argparse
 import importlib
@@ -23,6 +24,8 @@ def eval_genomes(genomes, config, args):
         observations, infos = env.reset()
         genome.fitness = 0
         net = neat.nn.FeedForwardNetwork.create(genome, config)
+        # TDNN instead of feed forward NN
+        # net = TDNN.create(genome, config)
         while env.ants:
             actions = {ant: net.activate(env.state[ant]) for ant in env.ants}
 
@@ -38,6 +41,8 @@ def view_winner(winner, config):
     observations, infos = env.reset()
     winner.fitness = 0
     net = neat.nn.FeedForwardNetwork.create(winner, config)
+    # TDNN instead of feed forward NN
+    # net = TDNN.create(winner, config)
     done = False
     while env.ants:
         actions = {ant: net.activate(env.state[ant]) for ant in env.ants}
@@ -70,6 +75,7 @@ if __name__ == '__main__':
     parser.add_argument('--size', '--s', type=int, help='Size of the environment')
     parser.add_argument('--range_radius', '--rr', type=int, help='Range radius of the environment')
     parser.add_argument('--num_steps', '--ns', type=int, help='Number of steps to run the environment for')
+    parser.add_argument('--nn_type', '--nt', type=str, help='Neural network type (feed forward or TDNN)')
 
     args = parser.parse_args()
 
