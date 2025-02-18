@@ -1,8 +1,6 @@
 import functools
-
 import gymnasium
-from gymnasium.spaces import Discrete
-
+from gymnasium.spaces import Discrete, Box  # Added Box for continuous observations
 from pettingzoo import ParallelEnv
 from pettingzoo.utils import parallel_to_aec, wrappers
 
@@ -13,188 +11,194 @@ import cv2
 import os
 import re
 
-
+# Environment parameters
 num_steps = 100
-render_mode = "human"
 size = 50
-num_agents = 1
+num_ants = 1
 
 class parallel_env(ParallelEnv):
-    metadata = {"render_modes": ["human"], "name": "rps_v2"}
+    metadata = {"render_modes": ["human"], "name": "navigation_env_v2"}
 
-    def __init__(self, render_mode=None):
+    def __init__(self, render_mode=None, num_ants=None, num_food=None, size=None, num_steps=None, range_radius=None):
         """
-        The init method takes in environment arguments and should define the following attributes:
-        - possible_agents
-        - render_mode
+        Initialize the environment with a list of ants and a rendering mode.
         """
-
-        self.possible_agents = [ant() for _ in range(num_agents)]
-
-        self.agent_name_mapping = dict(
-            zip(self.possible_agents, list(range(len(self.possible_agents))))
+        self.possible_ants = [ant() for _ in range(num_ants)]
+        self.ant_name_mapping = dict(
+            zip(self.possible_ants, list(range(len(self.possible_ants))))
         )
         self.render_mode = render_mode
         if self.render_mode == 'human':
             plt.ion() 
             self.figure, self.ax = plt.subplots()
-            self.scatter = self.ax.scatter([], [], s=100) 
-            self.quiver = self.ax.quiver([], [], [], [], scale=50, color='red')  
+            self.scatter = self.ax.scatter([], [], s=100)
+            self.quiver = self.ax.quiver([], [], [], [], scale=50, color='red')
             self.ax.set_xlim(-size, size)
             self.ax.set_ylim(-size, size)
 
     @functools.lru_cache(maxsize=None)
-    def observation_space(self, agent):
-        return Discrete(8)
+    def observation_space(self, ant):
+        """
+        Define the observation space as a Box:
+          - x and y positions between -size and size
+          - current_angle between -pi and pi
+        """
+        low = np.array([-size, -size, -np.pi], dtype=np.float32)
+        high = np.array([size, size, np.pi], dtype=np.float32)
+        return Box(low=low, high=high, dtype=np.float32)
 
     @functools.lru_cache(maxsize=None)
-    def action_space(self, agent):
-        return Discrete(8)
+    def action_space(self, ant):
+        """
+        Define a discrete action space with 4 actions:
+          0: turn left (increase angle by pi/4)
+          1: turn right (decrease angle by pi/4)
+          2: move forward
+          3: move backward
+        """
+        return Discrete(4)
 
     def render(self):
         """
-        Renders the environment. In human mode, it can print to terminal, open
-        up a graphical window, or open up some other display that a human can see and understand.
+        Render the current state of the environment.
+        In human mode, display a plot showing ant positions and orientations.
         """
         if self.render_mode is None:
             gymnasium.logger.warn("You are calling render method without specifying any render mode.")
             return
         elif self.render_mode == "human":
-            x = [agent.location['x'] for agent in self.agents]
-            y = [agent.location['y'] for agent in self.agents]
-            u = [np.cos(np.deg2rad(agent.current_angle)) for agent in self.agents] 
-            v = [np.sin(np.deg2rad(agent.current_angle)) for agent in self.agents] 
+            x = [ant.location['x'] for ant in self.ants]
+            y = [ant.location['y'] for ant in self.ants]
+            # Since current_angle is already in radians, we use it directly.
+            u = [np.cos(ant.current_angle) for ant in self.ants]
+            v = [np.sin(ant.current_angle) for ant in self.ants]
             self.scatter.set_offsets(np.c_[x, y])
-            self.quiver.set_offsets(np.c_[x, y])  
-            self.quiver.set_UVC(u, v)  
+            self.quiver.set_offsets(np.c_[x, y])
+            self.quiver.set_UVC(u, v)
             plt.draw()
             plt.pause(0.1)
         elif self.render_mode == "video":
             pass
-   
+
     def close(self):
         """
-        Close should release any graphical displays, subprocesses, network connections
-        or any other environment data which should not be kept around after the
-        user is no longer using the environment.
+        Close any open rendering windows.
         """
         if self.render_mode == "human":
-            plt.ioff()  
+            plt.ioff()
             plt.close(self.figure)
 
     def reset(self, seed=None, options=None):
         """
-        Reset needs to initialize the `agents` attribute and must set up the
-        environment so that render(), and step() can be called without issues.
-        Here it initializes the `num_moves` variable which counts the number of
-        hands that are played.
-        Returns the observations for each agent
+        Reset the environment:
+          - Create new ant instances.
+          - Initialize location and angle logs.
+          - Reset the move counter.
+          - Return initial observations and infos.
         """
-        self.agents = [ant() for _ in range(num_agents)]
-
-        self.agent_location_log = {agent: [] for agent in self.agents}
-        self.agent_angle_log = {agent: [] for agent in self.agents}
-
+        self.ants = [ant() for _ in range(num_ants)]
+        self.ant_location_log = {ant: [] for ant in self.ants}
+        self.ant_angle_log = {ant: [] for ant in self.ants}
         self.num_moves = 0
         observations = {
-            self.agents[i]: (self.agents[i].location['x'], self.agents[i].location['y'], self.agents[i].current_angle) for i in range(len(self.agents))
+            self.ants[i]: (self.ants[i].location['x'], self.ants[i].location['y'], self.ants[i].current_angle)
+            for i in range(len(self.ants))
         }
-        infos = {agent: {} for agent in self.agents}
+        infos = {ant: {} for ant in self.ants}
         self.state = observations
-
         return observations, infos
 
     def step(self, actions):
         """
-        step(action) takes in an action for each agent and should return the
-        - observations
-        - rewards
-        - terminations
-        - truncations
-        - infos
-        dicts where each dict looks like {agent_1: item_1, agent_2: item_2}
+        Process one time-step in the environment given actions for each ant.
+        Returns:
+          - observations: updated state of each ant.
+          - rewards: +1 if the ant moves closer to the target (size, size), else 0.
+          - terminations: always False for now.
         """
         if not actions:
-            self.agents = []
-            return {}, {}, {}, {}, {}
+            self.ants = []
+            return {}, {}, {}, {}
 
-        terminations = {agent: False for agent in self.agents}
-
+        terminations = {ant: False for ant in self.ants}
         self.num_moves += 1
-        env_truncation = self.num_moves >= num_steps or np.linalg.norm(np.array((size,size)) - np.array((self.agents[0].location['x'], self.agents[0].location['y']))) < 1
+        # End the episode if we've reached the max steps or the ant is within 1 unit of the target.
+        env_truncation = self.num_moves >= num_steps or np.linalg.norm(
+            np.array((size, size)) - np.array((self.ants[0].location['x'], self.ants[0].location['y']))
+        ) < 1
 
-        agent_previous_location = {agent: agent.location.copy() for agent in self.agents}
-        for agent in self.agents:
-            self.agent_location_log[agent].append(agent.location.copy())
-            self.agent_angle_log[agent].append(agent.current_angle) 
-            action = np.argmax(actions[agent])
+        ant_previous_location = {ant: ant.location.copy() for ant in self.ants}
+        for ant in self.ants:
+            self.ant_location_log[ant].append(ant.location.copy())
+            self.ant_angle_log[ant].append(ant.current_angle)
+            # Use np.argmax so that the network’s output maps to one of 4 actions.
+            action = np.argmax(actions[ant])
             if action == 0:
-                agent.update_angle(np.pi / 4)
+                ant.update_angle(np.pi / 4)
             elif action == 1:
-                agent.update_angle(-np.pi / 4)
+                ant.update_angle(-np.pi / 4)
             elif action == 2:
-                agent.update_location(1)
-                if agent.location['x'] <= size and agent.location['y'] <= size and agent.location['x'] >= -size and agent.location['y'] >= -size:
-                    continue
-                else:
-                    agent.update_location(-1)
+                ant.update_location(1)
+                # Ensure the ant remains within bounds.
+                if not (-size <= ant.location['x'] <= size and -size <= ant.location['y'] <= size):
+                    ant.update_location(-1)
             elif action == 3:
-                agent.update_location(-1)
-                if agent.location['x'] <= size and agent.location['y'] <= size and agent.location['x'] >= -size and agent.location['y'] >= -size:
-                    continue
-                else:
-                    agent.update_location(1)
+                ant.update_location(-1)
+                if not (-size <= ant.location['x'] <= size and -size <= ant.location['y'] <= size):
+                    ant.update_location(1)
 
         observations = {
-            self.agents[i]: (self.agents[i].location['x'], self.agents[i].location['y'], self.agents[i].current_angle) for i in range(len(self.agents))
+            self.ants[i]: (self.ants[i].location['x'], self.ants[i].location['y'], self.ants[i].current_angle)
+            for i in range(len(self.ants))
         }
-
-        rewards = {agent: 1 if np.linalg.norm(np.array((size,size)) - np.array((agent.location['x'], agent.location['y']))) < np.linalg.norm(np.array((size,size)) - np.array((agent_previous_location[agent]['x'], agent_previous_location[agent]['y']))) else 0 for agent in self.agents}
-
+        rewards = {
+            ant: 1 if np.linalg.norm(
+                    np.array((size, size)) - np.array((ant.location['x'], ant.location['y']))
+                 ) < np.linalg.norm(
+                    np.array((size, size)) - np.array((ant_previous_location[ant]['x'], ant_previous_location[ant]['y']))
+                 ) else 0
+            for ant in self.ants
+        }
         self.state = observations
 
         if env_truncation:
             if self.render_mode == "video":
                 self.make_video()
-            self.agents = []
+            self.ants = []
 
         if self.render_mode == "human":
             self.render()
 
         return observations, rewards, terminations
-    
+
     def make_video(self):
         if self.render_mode == "video":
             frames_dir = "frames"
             os.makedirs(frames_dir, exist_ok=True)
 
-            for i, frame in enumerate(self.agent_location_log[self.agents[0]]):
+            for i, _ in enumerate(self.ant_location_log[self.ants[0]]):
                 fig, ax = plt.subplots()
-                for agent in self.agents:
-                    ax.scatter(self.agent_location_log[agent][i]['x'], self.agent_location_log[agent][i]['y'])
-                    angle_rad = self.agent_angle_log[agent][i]
+                for ant in self.ants:
+                    ax.scatter(self.ant_location_log[ant][i]['x'], self.ant_location_log[ant][i]['y'])
+                    angle_rad = self.ant_angle_log[ant][i]
                     ax.quiver(
-                        self.agent_location_log[agent][i]['x'],
-                        self.agent_location_log[agent][i]['y'],
+                        self.ant_location_log[ant][i]['x'],
+                        self.ant_location_log[ant][i]['y'],
                         np.cos(angle_rad),
                         np.sin(angle_rad),
                         scale=20,
                         color='red'
                     )
-                
                 ax.set_xlim(-size, size)
                 ax.set_ylim(-size, size)
-                plt.savefig(f"{frames_dir}/frame_{i:05d}.png")  # Zero-pad frame number
+                plt.savefig(f"{frames_dir}/frame_{i:05d}.png")
                 plt.close(fig)
 
-            # Sort frame files numerically
             frame_files = sorted(
                 os.listdir(frames_dir),
                 key=lambda x: int(re.findall(r'\d+', x)[0]) if re.findall(r'\d+', x) else 0
             )
             frame_paths = [os.path.join(frames_dir, file) for file in frame_files]
-
-            # Read the first frame to get video dimensions
             frame = cv2.imread(frame_paths[0])
             height, width, _ = frame.shape
 
@@ -208,12 +212,10 @@ class parallel_env(ParallelEnv):
 
             video.release()
 
-            # Remove the frames directory
             for frame_path in frame_paths:
                 os.remove(frame_path)
             os.rmdir(frames_dir)
 
-            # Return the video path
             return video_path
         else:
             return None

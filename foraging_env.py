@@ -1,7 +1,6 @@
 import functools
-
 import gymnasium
-from gymnasium.spaces import Discrete
+from gymnasium.spaces import Box, Discrete
 
 from pettingzoo import ParallelEnv
 from pettingzoo.utils import parallel_to_aec, wrappers
@@ -17,283 +16,247 @@ from food import food
 
 # Default Constants
 num_steps = 100
-render_mode = "human"
 size = 50
 num_ants = 1
 num_food = 1
 range_radius = 10
 
+def distance(pos_a, pos_b):
+    """Calculate Euclidean distance between two positions."""
+    return math.sqrt((pos_b['x'] - pos_a['x']) ** 2 + (pos_b['y'] - pos_a['y']) ** 2)
 
-def distance(ant_pos, food_pos):
-            """Calculate the Euclidean distance between the ant and food."""
-            return math.sqrt((food_pos['x'] - ant_pos['x']) ** 2 + (food_pos['y'] - ant_pos['y']) ** 2)
-
-def get_observations(ant, food_list, range_limit):
-    """Return the closest food distances in 8 directional sections around the ant within a given range."""
-    observations = [float('inf')] * 8  
+def get_observations(a, food_list, sensor_range):
+    """
+    For the given ant, return an 8-element list.
+    Each element is the distance to the closest (unpicked) food in that 45° sector.
+    If no food is detected in a sector, the value defaults to sensor_range.
+    """
+    # Initialize all eight sensor readings to the maximum range.
+    observations = [sensor_range] * 8  
     section_angle = 360 / 8  
-
-    for food in food_list:
-        dist = distance(ant.location, food.location)
-        
-        # Only consider food within the specified range
-        if dist <= range_limit and not food.picked_up:
-            angle_to_food = math.degrees(math.atan2(food.location['y'] - ant.location['y'], food.location['x'] - ant.location['x'])) % 360
-            
-            adjusted_angle = (angle_to_food - ant.current_angle) % 360
-            
-            section_index = int(adjusted_angle // section_angle)  
-            
+    for f in food_list:
+        if f.picked_up:
+            continue
+        dist = distance(a.location, f.location)
+        if dist <= sensor_range:
+            angle_to_food = math.degrees(math.atan2(
+                f.location['y'] - a.location['y'],
+                f.location['x'] - a.location['x']
+            )) % 360
+            adjusted_angle = (angle_to_food - math.degrees(a.current_angle)) % 360
+            section_index = min(7, int(adjusted_angle // section_angle))
             if dist < observations[section_index]:
                 observations[section_index] = dist
-
-    # Replace 'infinity' with None for sections with no food
-    observations = [obs for obs in observations]
-
-    return observations
+    # Normalize: 1 means food is right there; 0 means no food detected.
+    normalized_obs = [1.0 - (d / sensor_range) for d in observations]
+    return normalized_obs
 
 class parallel_env(ParallelEnv):
-    metadata = {"render_modes": ["human"], "name": "rps_v2"}
+    metadata = {"render_modes": ["human"], "name": "foraging_env_v2"}
 
     def __init__(self, render_mode=None, num_ants=1, num_food=1, size=50, num_steps=100, range_radius=10):
         """
-        The init method takes in environment arguments and should define the following attributes:
-        - ants
-        - render_mode
-        - food
-        - size
-        - num_steps
-        - ant_range_radius
+        Initialize the environment with ants and food.
         """
         self.num_food = num_food
-        self.ants = [ant() for _ in range(num_ants)]
-        self.food = [food() for _ in range(num_food)]
         self.size = size
-        self.step_count = 0
         self.num_steps = num_steps
         self.ant_range_radius = range_radius
         
-        self.ant_name_mapping = dict(
-            zip(self.ants, list(range(len(self.ants))))
-        )
+        self.ants = [ant() for _ in range(num_ants)]
+        self.food = [food(self.size) for _ in range(num_food)]
+        self.step_count = 0
+        
+        self.ant_name_mapping = dict(zip(self.ants, list(range(len(self.ants)))))
         self.render_mode = render_mode
         if self.render_mode == 'human':
             plt.ion() 
             self.figure, self.ax = plt.subplots()
-            self.scatter = self.ax.scatter([], [], s=100)
+            self.ant_scatter = self.ax.scatter([], [], s=100)
             self.food_scatter = self.ax.scatter([], [], s=100, color='green')
-            self.quiver = self.ax.quiver([], [], [], [], scale=50, color='red')  
+            self.quiver = self.ax.quiver([], [], [], [], scale=50, color='red')
             self.ax.set_xlim(-self.size, self.size)
             self.ax.set_ylim(-self.size, self.size)
 
+    def observation_space(self, agent):
+        # Eight continuous sensor readings, each between 0 and sensor_range.
+        low = np.zeros(8, dtype=np.float32)
+        high = np.ones(8, dtype=np.float32) * self.ant_range_radius
+        return Box(low=low, high=high, dtype=np.float32)
 
-    @functools.lru_cache(maxsize=None)
-    def observation_space(self, ant):
-        return Discrete(8)
-
-    @functools.lru_cache(maxsize=None)
-    def action_space(self, ant):
-        return Discrete(8)
+    def action_space(self, agent):
+        # Four discrete actions: 0: turn left, 1: turn right, 2: move forward, 3: move backward.
+        return Discrete(4)
 
     def render(self):
-        """
-        Renders the environment. In human mode, it can print to terminal, open
-        up a graphical window, or open up some other display that a human can see and understand.
-        """
         if self.render_mode is None:
-            gymnasium.logger.warn("You are calling render method without specifying any render mode.")
+            gymnasium.logger.warn("Render called without a render mode.")
             return
         elif self.render_mode == "human":
-            x = [ant.location['x'] for ant in self.ants]
-            y = [ant.location['y'] for ant in self.ants]
-            u = [np.cos(np.deg2rad(ant.current_angle)) for ant in self.ants] 
-            v = [np.sin(np.deg2rad(ant.current_angle)) for ant in self.ants]
-            z_1 = [food.location['x'] for food in self.food]
-            z_2 = [food.location['y'] for food in self.food]
-            self.scatter.set_offsets(np.c_[x, y])
+            x = [a.location['x'] for a in self.ants]
+            y = [a.location['y'] for a in self.ants]
+            # Use current_angle (in radians) directly for computing direction.
+            u = [np.cos(a.current_angle) for a in self.ants] 
+            v = [np.sin(a.current_angle) for a in self.ants]
+            food_x = [f.location['x'] for f in self.food if not f.picked_up]
+            food_y = [f.location['y'] for f in self.food if not f.picked_up]
+            self.ant_scatter.set_offsets(np.c_[x, y])
             self.quiver.set_offsets(np.c_[x, y])
-            self.quiver.set_UVC(u, v)  
-            self.food_scatter.set_offsets(np.c_[z_1, z_2])
+            self.quiver.set_UVC(u, v)
+            self.food_scatter.set_offsets(np.c_[food_x, food_y])
             plt.draw()
             plt.pause(0.1)
         elif self.render_mode == "video":
             pass
    
     def close(self):
-        """
-        Close should release any graphical displays, subprocesses, network connections
-        or any other environment data which should not be kept around after the
-        user is no longer using the environment.
-        """
         if self.render_mode == "human":
             plt.ioff()  
             plt.close(self.figure)
 
     def reset(self, seed=None, options=None):
         """
-        Reset needs to initialize the `ants` attribute and must set up the
-        environment so that render(), and step() can be called without issues.
-        Here it initializes the `num_moves` variable which counts the number of
-        hands that are played.
-        Returns the observations for each ant
+        Reinitialize ants and food, along with logging variables.
         """
         self.ants = [ant() for _ in range(num_ants)]
-        self.food = [] 
-        self.food_location_log = {food: [food.location.copy()] for food in self.food}
-        self.ant_location_log = {ant: [ant.location] for ant in self.ants}
-        self.ant_angle_log = {ant: [ant.current_angle] for ant in self.ants}
+        self.food = [food(self.size) for _ in range(self.num_food)]
         self.step_count = 0
+        self.food_location_log = {f: [f.location.copy()] for f in self.food}
+        self.ant_location_log = {a: [a.location.copy()] for a in self.ants}
+        self.ant_angle_log = {a: [a.current_angle] for a in self.ants}
 
-        observations = {
-            self.ants[i]: get_observations(self.ants[i], self.food, self.ant_range_radius) for i in range(len(self.ants))
-        } 
-        infos = {ant: {} for ant in self.ants}
+        observations = {a: get_observations(a, self.food, self.ant_range_radius) for a in self.ants}
+        infos = {a: {} for a in self.ants}
         self.state = observations
 
         return observations, infos
 
     def step(self, actions):
         """
-        step(action) takes in an action for each ant and should return the
-        - observations
-        - rewards
-        - terminations
-        - truncations
-        - infos
-        dicts where each dict looks like {ant_1: item_1, ant_2: item_2}
+        Process one step:
+          - Update ant positions based on chosen actions.
+          - Provide shaping rewards if ants move closer to food.
+          - Give a bonus reward when food is picked up.
+          - Terminate episode after a fixed number of steps.
         """
-
         self.step_count += 1
-
-        if self.step_count >= self.num_steps:
-            self.ants = None
-            return {}, {}, {}
-        
+        env_truncation = self.step_count >= self.num_steps
         if not actions:
-            self.ants = []
             return {}, {}, {}
 
         terminations = {ant: False for ant in self.ants}
+        rewards = {a: 0 for a in self.ants}
 
-        # Handle the actions of each ant
-        ant_previous_location = {ant: ant.location.copy() for ant in self.ants}
-        for ant in self.ants:
-            self.ant_location_log[ant].append(ant.location.copy())
-            self.ant_angle_log[ant].append(ant.current_angle) 
-            action = np.argmax(actions[ant])
+        ant_previous_location = {a: a.location.copy() for a in self.ants}
+
+        # Process actions for each ant.
+        for a in self.ants:
+            self.ant_location_log[a].append(a.location.copy())
+            self.ant_angle_log[a].append(a.current_angle)
+            action = np.argmax(actions[a])
             if action == 0:
-                ant.update_angle(np.pi / 4)
+                a.update_angle(np.pi / 4)
             elif action == 1:
-                ant.update_angle(-np.pi / 4)
+                a.update_angle(-np.pi / 4)
             elif action == 2:
-                ant.update_location(1)
-                if ant.location['x'] <= size and ant.location['y'] <= size and ant.location['x'] >= -size and ant.location['y'] >= -size:
-                    continue
-                else:
-                    ant.update_location(-1)
-            elif action == 3:
-                ant.update_location(-1)
-                if ant.location['x'] <= size and ant.location['y'] <= size and ant.location['x'] >= -size and ant.location['y'] >= -size:
-                    continue
-                else:
-                    ant.update_location(1)
+                a.update_location(1)
+                if not (-self.size <= a.location['x'] <= self.size and -self.size <= a.location['y'] <= self.size):
+                    a.update_location(-1)
 
-        observations = {
-            self.ants[i]: get_observations(self.ants[i], self.food, self.ant_range_radius) for i in range(len(self.ants))
-        }
+            # take out backwards movement
+            # elif action == 3:
+            #     a.update_location(-1)
+            #     if not (-self.size <= a.location['x'] <= self.size and -self.size <= a.location['y'] <= self.size):
+            #         a.update_location(1)
+
+        # Shaping reward: encourage movement toward the nearest available food.
+        for a in self.ants:
+            available_food = [f for f in self.food if not f.picked_up]
+            if available_food:
+                prev_dists = [distance(ant_previous_location[a], f.location) for f in available_food]
+                curr_dists = [distance(a.location, f.location) for f in available_food]
+                prev_min = min(prev_dists)
+                curr_min = min(curr_dists)
+                # Reward the ant for reducing its distance to food.
+                if curr_min < prev_min:
+                    rewards[a] += (prev_min - curr_min)
+
+        # Check if any ant picks up food (if within distance < 1) and assign bonus reward.
+        for f in self.food:
+            if not f.picked_up:
+                for a in self.ants:
+                    if distance(a.location, f.location) < 1:
+                        f.picked_up = True
+                        rewards[a] += 100
+                self.food_location_log[f].append(f.location.copy())
+
+        observations = {a: get_observations(a, self.food, self.ant_range_radius) for a in self.ants}
         self.state = observations
-
-        rewards = {ant: 0 for ant in self.ants}
-
-        # Check if the ant has picked up food
-        for food in self.food:
-            if not food.picked_up:
-                for ant in self.ants:
-                    if np.linalg.norm(np.array((food.location['x'], food.location['y'])) - np.array((ant.location['x'], ant.location['y']))) < 1:
-                        food.picked_up = True
-                        rewards[ant] = 100
-                self.food_location_log[food].append(food.location.copy())
-
-        
-        # self.state = observations
-        env_truncation = self.num_moves >= num_steps
 
         if env_truncation:
             if self.render_mode == "video":
                 self.make_video()
-            self.ants = []
+            self.ants = None
 
         if self.render_mode == "human":
             self.render()
 
         return observations, rewards, terminations
-    
+
     def make_video(self):
+        plt.ioff()
         if self.render_mode == "video":
             frames_dir = "frames"
             os.makedirs(frames_dir, exist_ok=True)
-            for i, frame in enumerate(self.ant_location_log[self.ants[0]]):
+            # Assuming all ants have the same number of logged steps.
+            num_frames = len(next(iter(self.ant_location_log.values())))
+            for i in range(num_frames):
                 fig, ax = plt.subplots()
-                
-                for ant in self.ants:
-                    # Draw the circle for each ant's range
-                    circle = plt.Circle((self.ant_location_log[ant][i]['x'], self.ant_location_log[ant][i]['y']),
-                                        range_radius, color='blue', fill=False, linestyle='--')
+                for a in self.ants:
+                    circle = plt.Circle((self.ant_location_log[a][i]['x'], self.ant_location_log[a][i]['y']),
+                                        self.ant_range_radius, color='blue', fill=False, linestyle='--')
                     ax.add_artist(circle)
-
-                    # Draw the section lines for each ant
                     for section in range(8):
-                        angle = section * np.pi/4 + self.ant_angle_log[ant][i]  # Adjust based on ant's current angle
-                        x_end = self.ant_location_log[ant][i]['x'] + range_radius * np.cos(angle)
-                        y_end = self.ant_location_log[ant][i]['y'] + range_radius * np.sin(angle)
-                        ax.plot([self.ant_location_log[ant][i]['x'], x_end],
-                                [self.ant_location_log[ant][i]['y'], y_end],
+                        angle = section * np.pi/4 + self.ant_angle_log[a][i]
+                        x_end = self.ant_location_log[a][i]['x'] + self.ant_range_radius * np.cos(angle)
+                        y_end = self.ant_location_log[a][i]['y'] + self.ant_range_radius * np.sin(angle)
+                        ax.plot([self.ant_location_log[a][i]['x'], x_end],
+                                [self.ant_location_log[a][i]['y'], y_end],
                                 color='orange', linestyle='--')
-                    ax.scatter(self.ant_location_log[ant][i]['x'], self.ant_location_log[ant][i]['y'])
-                    angle_rad = self.ant_angle_log[ant][i]
+                    ax.scatter(self.ant_location_log[a][i]['x'], self.ant_location_log[a][i]['y'])
+                    angle_rad = self.ant_angle_log[a][i]
                     ax.quiver(
-                        self.ant_location_log[ant][i]['x'],
-                        self.ant_location_log[ant][i]['y'],
+                        self.ant_location_log[a][i]['x'],
+                        self.ant_location_log[a][i]['y'],
                         np.cos(angle_rad),
                         np.sin(angle_rad),
                         scale=20,
                         color='red'
                     )
-                for food in self.food:
-                    if i < len(self.food_location_log[food]):
-                        ax.scatter(self.food_location_log[food][i]['x'], self.food_location_log[food][i]['y'], color='blue')
-                ax.set_xlim(-size, size)
-                ax.set_ylim(-size, size)
-                plt.savefig(f"{frames_dir}/frame_{i:05d}.png")  # Zero-pad frame number
+                for f in self.food:
+                    if i < len(self.food_location_log[f]):
+                        ax.scatter(self.food_location_log[f][i]['x'], self.food_location_log[f][i]['y'], color='blue')
+                ax.set_xlim(-self.size, self.size)
+                ax.set_ylim(-self.size, self.size)
+                plt.savefig(f"{frames_dir}/frame_{i:05d}.png")
                 plt.close(fig)
-
-            # Sort frame files numerically
             frame_files = sorted(
                 os.listdir(frames_dir),
                 key=lambda x: int(re.findall(r'\d+', x)[0]) if re.findall(r'\d+', x) else 0
             )
             frame_paths = [os.path.join(frames_dir, file) for file in frame_files]
-
-            # Read the first frame to get video dimensions
             frame = cv2.imread(frame_paths[0])
             height, width, _ = frame.shape
-
             video_path = "foraging_vid.mp4"
             fourcc = cv2.VideoWriter_fourcc(*"mp4v")
             video = cv2.VideoWriter(video_path, fourcc, 30, (width, height))
-
             for frame_path in frame_paths:
                 frame = cv2.imread(frame_path)
                 video.write(frame)
-
             video.release()
-
-            # Remove the frames directory
             for frame_path in frame_paths:
                 os.remove(frame_path)
             os.rmdir(frames_dir)
-
-            # Return the video path
             return video_path
         else:
             return None
