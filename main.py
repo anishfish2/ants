@@ -2,6 +2,7 @@ import environment
 import navigation_env
 import foraging_env
 import neat
+from TDNN import TDNN
 import os
 import argparse
 import importlib
@@ -30,6 +31,8 @@ def eval_genomes(genomes, config, args):
         observations, infos = env.reset()
         genome.fitness = 0
         net = neat.nn.FeedForwardNetwork.create(genome, config)
+        # TDNN instead of feed forward NN
+        # net = TDNN.create(genome, config)
         while env.ants:
             actions = {ant: net.activate(env.state[ant]) for ant in env.ants}
             observations, rewards, terminations = env.step(actions)
