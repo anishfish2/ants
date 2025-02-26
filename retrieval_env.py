@@ -62,8 +62,11 @@ class parallel_env(ParallelEnv):
 
         self.render_mode = render_mode
         if self.render_mode == 'human':
+
             plt.ion()
             self.figure, self.ax = plt.subplots()
+            self.ax.set_aspect('equal')
+
             # Create the ant scatter; initial color will be red.
             self.ant_scatter = self.ax.scatter([], [], s=100, color='red')
             # Create the food scatter.
@@ -237,24 +240,38 @@ class parallel_env(ParallelEnv):
             # Interaction: if not carrying food, try to pick up a food item.
             for f in self.food:
                 if a.cargo < a.max_cargo:
-                    if not f.picked_up and euclidean_distance(a.location, f.location) < 1:
+                    if not f.picked_up and euclidean_distance(a.location, f.location) < 5:
                         f.picked_up = True
                         a.cargo += 1
                         rewards[a] += 50  # Reward for pickup.
+
             # If carrying food, check for delivery at home base.
             if a.cargo > 0:
-                if euclidean_distance(a.location, self.home_base) < 1:
+                if euclidean_distance(a.location, self.home_base) < 5:
                     rewards[a] += 200  # Reward for delivery.
                     self.food_delivered_count += 1
                     a.cargo = 0
 
+            shaping_factor = 0.5
+            if a.cargo == 0:
+                # When not carrying food, reward moving closer to the nearest available food.
+                available_food = [f for f in self.food if not f.picked_up]
+                if available_food:
+                    prev_dist = min(euclidean_distance(previous_positions[a], f.location) for f in available_food)
+                    curr_dist = min(euclidean_distance(a.location, f.location) for f in available_food)
+                    rewards[a] += (prev_dist - curr_dist) * shaping_factor
+            else:
+                # When carrying food, reward moving closer to the home base.
+                prev_dist = euclidean_distance(previous_positions[a], self.home_base)
+                curr_dist = euclidean_distance(a.location, self.home_base)
+                rewards[a] += (prev_dist - curr_dist) * shaping_factor
         observations = {a: self.get_observation(a) for a in self.ants}
         self.state = observations
 
         if env_truncation:
             print('Delivered food:', self.food_delivered_count)
-            # if self.render_mode == "video":
-            #     self.make_video()
+            if self.render_mode == "video":
+                self.make_video()
             for a in self.ants:
                 terminations[a] = True
             self.ants = []
@@ -287,7 +304,7 @@ class parallel_env(ParallelEnv):
                     print(f"Error deleting folder '{frames_dir}': {e}")
             else:
                 print(f"Folder '{frames_dir}' does not exist.")
-                
+
             os.makedirs(frames_dir, exist_ok=False)
             # Assume all ants have the same number of logged steps.
             num_frames = len(next(iter(self.ant_location_log.values())))

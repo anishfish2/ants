@@ -2,7 +2,6 @@ import environment
 import navigation_env
 import foraging_env
 import neat
-from TDNN import TDNN
 import os
 import argparse
 import importlib
@@ -39,7 +38,6 @@ def eval_genomes(genomes, config, args):
             genome.fitness += sum(rewards.values())
         # Record the food-delivered count for this episode into the genome.
         genome.delivered_count = getattr(env, 'food_delivered_count', 0)
-    print('------------------------------------------------------------------------')
     env.close()
 
 def view_winner(winner, config, args):
