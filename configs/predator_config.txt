@@ -1,14 +1,16 @@
 [NEAT]
-fitness_criterion     = max
-fitness_threshold     = 1000
-pop_size              = 300
-reset_on_extinction   = False
+fitness_criterion      = max
+fitness_threshold      = 1000
+no_fitness_termination = True
+; For predator simulations use pop_size = 5, for prey use pop_size = 20
+pop_size               = 5
+reset_on_extinction    = False
 
 [DefaultGenome]
 # Node activation options.
-activation_default      = tanh
+activation_default      = sigmoid
 activation_mutate_rate  = 0.0
-activation_options      = tanh
+activation_options      = sigmoid
 
 # Node aggregation options.
 aggregation_default     = sum
@@ -37,11 +39,11 @@ enabled_default         = True
 enabled_mutate_rate     = 0.01
 
 feed_forward            = True
-initial_connection      = full_direct
+initial_connection      = full
 
 # Node add/remove rates.
 node_add_prob           = 0.2
-node_delete_prob        = 0.1
+node_delete_prob        = 0.2
 
 # Network parameters.
 num_hidden              = 0
@@ -72,8 +74,8 @@ compatibility_threshold = 3.0
 [DefaultStagnation]
 species_fitness_func = max
 max_stagnation       = 15
-species_elitism      = 1
+species_elitism      = 2
 
 [DefaultReproduction]
-elitism            = 1
+elitism            = 2
 survival_threshold = 0.2

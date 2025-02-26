@@ -80,10 +80,12 @@ class parallel_env(ParallelEnv):
         self.state = self._get_all_observations()
     
     def observation_space(self, agent):
-        # Observation: [agent_x, agent_y, opponent_x, opponent_y, normalized_angle]
-        low = np.array([-1, -1, -1, -1, 0], dtype=np.float32)
+        # Observation: [agent_x, agent_y, opponent_x, opponent_y, relative_angle]
+        # relative_angle is normalized to [-1, 1].
+        low = np.array([-1, -1, -1, -1, -1], dtype=np.float32)
         high = np.array([1, 1, 1, 1, 1], dtype=np.float32)
         return Box(low=low, high=high, dtype=np.float32)
+
     
     def action_space(self, agent):
         # Three discrete actions: 0 = no turn, 1 = turn left, 2 = turn right.
@@ -91,12 +93,23 @@ class parallel_env(ParallelEnv):
     
     def _get_observation(self, agent):
         opponent = self.prey if agent.role == 'predator' else self.predator
+        # Normalize positions by the size of the environment.
         ax = agent.location['x'] / self.size
         ay = agent.location['y'] / self.size
         ox = opponent.location['x'] / self.size
         oy = opponent.location['y'] / self.size
-        norm_angle = (agent.current_angle % (2 * math.pi)) / (2 * math.pi)
-        return np.array([ax, ay, ox, oy, norm_angle], dtype=np.float32)
+        
+        # Calculate the angle from the agent to its opponent.
+        angle_to_opponent = math.atan2(oy - ay, ox - ax)
+        # Compute the relative angle between the direction to the opponent and the agent's current heading.
+        relative_angle = angle_to_opponent - agent.current_angle
+        # Wrap the angle to be within [-pi, pi].
+        relative_angle = (relative_angle + math.pi) % (2 * math.pi) - math.pi
+        # Normalize to [-1, 1].
+        relative_angle_norm = relative_angle / math.pi
+
+        return np.array([ax, ay, ox, oy, relative_angle_norm], dtype=np.float32)
+
     
     def _get_all_observations(self):
         return {agent: self._get_observation(agent) for agent in self.agents}
@@ -130,7 +143,7 @@ class parallel_env(ParallelEnv):
             self.predator.location['x'] - self.prey.location['x'],
             self.predator.location['y'] - self.prey.location['y']
         )
-        
+
         # Process actions for each agent.
         for agent in self.agents:
             a = np.argmax(actions[agent])
@@ -147,50 +160,41 @@ class parallel_env(ParallelEnv):
             # Clamp positions.
             agent.location['x'] = max(-self.size, min(self.size, agent.location['x']))
             agent.location['y'] = max(-self.size, min(self.size, agent.location['y']))
-        
+
         # Compute new distance after movement.
         new_distance = math.hypot(
             self.predator.location['x'] - self.prey.location['x'],
             self.predator.location['y'] - self.prey.location['y']
         )
-        
-        # Reward shaping.
+
+        # Distance-based reward:
+        # Predator is rewarded for decreasing distance; prey for increasing it.
         predator_reward = (prev_distance - new_distance) * 10
+        prey_reward = (new_distance - prev_distance) * 10
+
+        # Capture bonus/penalty remains:
         if new_distance < self.catch_radius:
             predator_reward += 100
-        prey_reward = (new_distance - prev_distance) * 10
-        if new_distance < self.catch_radius:
             prey_reward -= 100
         else:
-            # Reduced survival bonus for staying alive.
+            # Add a small survival bonus to the prey.
             prey_reward += 0.1
 
-        wall_threshold = self.size * 0.2  # 20% of the arena size.
-        max_wall_penalty = 150  # Maximum penalty.
+        # Big penalty if an agent hits a wall.
+        # (We check if an agent’s position is exactly at the boundary.)
         for agent in self.agents:
-            dist_left = agent.location['x'] + self.size
-            dist_right = self.size - agent.location['x']
-            dist_bottom = agent.location['y'] + self.size
-            dist_top = self.size - agent.location['y']
-            min_distance_to_wall = min(dist_left, dist_right, dist_bottom, dist_top)
-            if min_distance_to_wall < wall_threshold:
-                penalty = -max_wall_penalty * (1 - (min_distance_to_wall / wall_threshold))
+            if abs(agent.location['x']) == self.size or abs(agent.location['y']) == self.size:
                 if agent.role == 'predator':
-                    predator_reward += penalty
+                    predator_reward -= 100
                 else:
-                    prey_reward += penalty
-                # Optionally terminate if an agent touches the wall exactly.
-                if min_distance_to_wall == 0:
-                    terminations = {agent: True for agent in self.agents}
-                    self.agents = []
-                    break
-        
+                    prey_reward -= 100
+
         rewards = {self.predator: predator_reward, self.prey: prey_reward}
         terminations = {agent: False for agent in self.agents}
         if new_distance < self.catch_radius or self.step_count >= self.num_steps:
             terminations = {agent: True for agent in self.agents}
             self.agents = []  # End episode.
-        
+
         self.state = self._get_all_observations()
 
         if self.render_mode == "human":
