@@ -2,7 +2,7 @@ import os
 import argparse
 import random
 import neat
-import predator_prey_env 
+import predator_prey_foraging_env
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -14,20 +14,50 @@ class CoEvolutionPlotReporter(neat.reporting.BaseReporter):
         self.generations = []
         self.predator_best_fitness = []
         self.prey_best_fitness = []
+        self.predator_avg_fitness = []
+        self.prey_avg_fitness = []
         plt.ion()
         self.fig, self.ax = plt.subplots()
         self.ax.set_title("Best Fitness Over Generations")
         self.ax.set_xlabel("Generation")
         self.ax.set_ylabel("Fitness")
 
-    def post_evaluate(self, generation, predator_best, prey_best):
+    def post_evaluate(self, generation, predator_best, prey_best, predator_avg, prey_avg):
         self.generations.append(generation)
         self.predator_best_fitness.append(predator_best)
         self.prey_best_fitness.append(prey_best)
+        self.predator_avg_fitness.append(predator_avg)
+        self.prey_avg_fitness.append(prey_avg)
         self.ax.clear()
-        self.ax.plot(self.generations, self.predator_best_fitness, label='Predator Best Fitness', marker='o')
-        self.ax.plot(self.generations, self.prey_best_fitness, label='Prey Best Fitness', marker='o')
-        self.ax.set_title("Best Fitness Over Generations")
+        self.ax.plot(
+            self.generations,
+            self.predator_best_fitness,
+            label='Predator Best Fitness',
+            marker='o',
+            linestyle='-'
+        )
+        self.ax.plot(
+            self.generations,
+            self.prey_best_fitness,
+            label='Prey Best Fitness',
+            marker='o',
+            linestyle='-'
+        )
+        self.ax.plot(
+            self.generations,
+            self.predator_avg_fitness,
+            label='Predator Avg Fitness',
+            marker='x',
+            linestyle='--'
+        )
+        self.ax.plot(
+            self.generations,
+            self.prey_avg_fitness,
+            label='Prey Avg Fitness',
+            marker='x',
+            linestyle='--'
+        )
+        self.ax.set_title("Fitness Over Generations")
         self.ax.set_xlabel("Generation")
         self.ax.set_ylabel("Fitness")
         self.ax.legend()
@@ -43,7 +73,7 @@ def eval_coevolution(predator_genomes, predator_config, prey_genomes, prey_confi
     and evaluate each prey genome against the best predator genome over several episodes.
     This gives both populations a fitness signal:
       - Predators are rewarded for reducing the distance (and capturing) the prey.
-      - Prey are rewarded for increasing the distance (and avoiding capture).
+      - Prey are rewarded for increasing the distance (and avoiding capture) and for foraging.
     """
     episodes_per_genome = 5
 
@@ -62,14 +92,15 @@ def eval_coevolution(predator_genomes, predator_config, prey_genomes, prey_confi
     for pid in predator_ids:
         total_predator_reward = 0.0
         for ep in range(episodes_per_genome):
-            if ep == episodes_per_genome - 1 and gen % 10 == 0 and gen != 0 and pid == predator_ids[-1]:
-                env = predator_prey_env.parallel_env(
+            # Occasionally render in human mode.
+            if ep == episodes_per_genome - 1 and gen % 25 == 0 and gen != 0 and pid == predator_ids[-1]:
+                env = predator_prey_foraging_env.parallel_env(
                     render_mode='human',
                     size=args.size,
                     num_steps=args.num_steps
                 )
             else:
-                env = predator_prey_env.parallel_env(
+                env = predator_prey_foraging_env.parallel_env(
                     render_mode=args.render,
                     size=args.size,
                     num_steps=args.num_steps
@@ -107,7 +138,7 @@ def eval_coevolution(predator_genomes, predator_config, prey_genomes, prey_confi
     for pid in prey_ids:
         total_prey_reward = 0.0
         for ep in range(episodes_per_genome):
-            env = predator_prey_env.parallel_env(
+            env = predator_prey_foraging_env.parallel_env(
                 render_mode=args.render,
                 size=args.size,
                 num_steps=args.num_steps
@@ -133,8 +164,6 @@ def eval_coevolution(predator_genomes, predator_config, prey_genomes, prey_confi
             env.close()
         prey_genomes[pid].fitness = total_prey_reward / episodes_per_genome
 
-
-
 # --------------------------
 # Final Run Function (Human Rendering)
 # --------------------------
@@ -142,7 +171,7 @@ def run_best(predator_genome, predator_config, prey_genome, prey_config, args):
     """
     Run one episode using the best predator and prey genomes in human render mode.
     """
-    env = predator_prey_env.parallel_env(
+    env = predator_prey_foraging_env.parallel_env(
         render_mode='human',
         size=args.size,
         num_steps=args.num_steps
@@ -167,7 +196,6 @@ def run_best(predator_genome, predator_config, prey_genome, prey_config, args):
                 total_predator_reward += reward
             else:
                 total_prey_reward += reward
-        # Render the current frame in human mode.
         env.render()
     env.close()
     print("Final human run - Total Predator Reward:", total_predator_reward)
@@ -181,7 +209,7 @@ def run_best_video(predator_genome, predator_config, prey_genome, prey_config, a
     Run one episode using the best predator and prey genomes in video render mode.
     At termination, the environment will generate a video.
     """
-    env = predator_prey_env.parallel_env(
+    env = predator_prey_foraging_env.parallel_env(
         render_mode='video',
         size=args.size,
         num_steps=args.num_steps
@@ -206,7 +234,6 @@ def run_best_video(predator_genome, predator_config, prey_genome, prey_config, a
                 total_predator_reward += reward
             else:
                 total_prey_reward += reward
-        # In video mode, we skip per-step rendering (frames are logged internally).
     env.close()
     print("Final video run - Total Predator Reward:", total_predator_reward)
     print("Final video run - Total Prey Reward:", total_prey_reward)
@@ -263,12 +290,23 @@ def run(args):
         best_prey = max(prey_pop.population.values(), key=lambda g: g.fitness if g.fitness is not None else 0)
         print("Best predator fitness this generation:", best_predator.fitness)
         
-        predator_pop.reporters.post_evaluate(predator_config, predator_pop.population, predator_pop.species, best_predator)
-        prey_pop.reporters.post_evaluate(prey_config, prey_pop.population, prey_pop.species, best_prey)
+        predator_avg = np.mean([g.fitness for g in predator_pop.population.values()])
+        prey_avg = np.mean([g.fitness for g in prey_pop.population.values()])
+        
+        # Update the custom reporter with best and average fitness values.
         coevo_plot_reporter.post_evaluate(
             gen,
             best_predator.fitness if best_predator.fitness is not None else 0,
-            best_prey.fitness if best_prey.fitness is not None else 0
+            best_prey.fitness if best_prey.fitness is not None else 0,
+            predator_avg,
+            prey_avg
+        )
+        
+        predator_pop.reporters.post_evaluate(
+            predator_config, predator_pop.population, predator_pop.species, best_predator
+        )
+        prey_pop.reporters.post_evaluate(
+            prey_config, prey_pop.population, prey_pop.species, best_prey
         )
         
         new_predator_population = predator_pop.reproduction.reproduce(
@@ -293,21 +331,18 @@ def run(args):
     print("Best Prey Fitness:", best_prey.fitness)
     coevo_plot_reporter.fig.savefig("final_rewards_graph.png")
     print("Final rewards graph saved as 'final_rewards_graph.png'")
-    # Run the best predator and prey in human render mode.
-    # print("\nRunning final best predator and prey with human rendering...")
-    # run_best(best_predator, predator_config, best_prey, prey_config, args)
     
-    # Also run a final episode that generates a video.
-    # print("\nRunning final best predator and prey with video rendering...")
+    # Optionally, run final demonstration episodes:
+    # run_best(best_predator, predator_config, best_prey, prey_config, args)
     # run_best_video(best_predator, predator_config, best_prey, prey_config, args)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
-        description="Run predator-prey coevolution with separate NEAT populations and final demonstrations"
+        description="Run combined predator-prey-foraging coevolution with separate NEAT populations and final demonstrations"
     )
     parser.add_argument('--config_predator', default='predator_config.txt', type=str,
                         help='Path to the predator config file')
-    parser.add_argument('--config_prey', default='prey_config.txt', type=str,
+    parser.add_argument('--config_prey', default='prey_predator_retrieval_config.txt', type=str,
                         help='Path to the prey config file')
     parser.add_argument('--render', default='cpu', type=str,
                         help='Render mode during evolution (video or cpu)')
