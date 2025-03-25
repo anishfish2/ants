@@ -2,7 +2,7 @@ import os
 import argparse
 import random
 import neat
-import predator_prey_foraging_env
+import predator_prey_retrieval_env
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -81,7 +81,6 @@ def eval_coevolution(predator_genomes, predator_config, prey_genomes, prey_confi
     prey_ids = list(prey_genomes.keys())
 
     # --- Evaluate predators ---
-    # Choose the best prey genome (if available, otherwise pick randomly).
     if any(g.fitness is not None for g in prey_genomes.values()):
         best_prey_id, _ = max(
             prey_genomes.items(), key=lambda item: item[1].fitness if item[1].fitness is not None else -float('inf')
@@ -92,8 +91,7 @@ def eval_coevolution(predator_genomes, predator_config, prey_genomes, prey_confi
     for pid in predator_ids:
         total_predator_reward = 0.0
         for ep in range(episodes_per_genome):
-            # Always use the render mode from args during evaluation.
-            env = predator_prey_foraging_env.parallel_env(
+            env = predator_prey_retrieval_env.parallel_env(
                 render_mode=args.render,
                 size=args.size,
                 num_steps=args.num_steps
@@ -111,7 +109,6 @@ def eval_coevolution(predator_genomes, predator_config, prey_genomes, prey_confi
                     else:
                         actions[agent] = prey_net.activate(obs)
                 state, rewards, terminations = env.step(actions)
-                # Accumulate predator rewards.
                 for agent, reward in rewards.items():
                     if agent.role == 'predator':
                         episode_predator_reward += reward
@@ -120,7 +117,6 @@ def eval_coevolution(predator_genomes, predator_config, prey_genomes, prey_confi
         predator_genomes[pid].fitness = total_predator_reward / episodes_per_genome
 
     # --- Evaluate prey ---
-    # Choose the best predator genome (if available, otherwise pick randomly).
     if any(g.fitness is not None for g in predator_genomes.values()):
         best_predator_id, _ = max(
             predator_genomes.items(), key=lambda item: item[1].fitness if item[1].fitness is not None else -float('inf')
@@ -131,7 +127,7 @@ def eval_coevolution(predator_genomes, predator_config, prey_genomes, prey_confi
     for pid in prey_ids:
         total_prey_reward = 0.0
         for ep in range(episodes_per_genome):
-            env = predator_prey_foraging_env.parallel_env(
+            env = predator_prey_retrieval_env.parallel_env(
                 render_mode=args.render,
                 size=args.size,
                 num_steps=args.num_steps
@@ -149,7 +145,6 @@ def eval_coevolution(predator_genomes, predator_config, prey_genomes, prey_confi
                     else:
                         actions[agent] = prey_net.activate(obs)
                 state, rewards, terminations = env.step(actions)
-                # Accumulate prey rewards.
                 for agent, reward in rewards.items():
                     if agent.role == 'prey':
                         episode_prey_reward += reward
@@ -164,7 +159,7 @@ def run_best(predator_genome, predator_config, prey_genome, prey_config, args):
     """
     Run one episode using the best predator and prey genomes in human render mode.
     """
-    env = predator_prey_foraging_env.parallel_env(
+    env = predator_prey_retrieval_env.parallel_env(
         render_mode='human',
         size=args.size,
         num_steps=args.num_steps
@@ -200,9 +195,9 @@ def run_best(predator_genome, predator_config, prey_genome, prey_config, args):
 def run_best_video(predator_genome, predator_config, prey_genome, prey_config, args):
     """
     Run one episode using the best predator and prey genomes in video render mode.
-    At termination, the environment will generate a video.
+    When the episode terminates, the environment will generate and save a video.
     """
-    env = predator_prey_foraging_env.parallel_env(
+    env = predator_prey_retrieval_env.parallel_env(
         render_mode='video',
         size=args.size,
         num_steps=args.num_steps
@@ -230,6 +225,8 @@ def run_best_video(predator_genome, predator_config, prey_genome, prey_config, a
     env.close()
     print("Final video run - Total Predator Reward:", total_predator_reward)
     print("Final video run - Total Prey Reward:", total_prey_reward)
+    # Assume that the environment saves the video automatically (e.g., to a file like "final_video.mp4").
+    print("Video has been generated and saved.")
 
 # --------------------------
 # Main Evolution Loop
@@ -286,7 +283,6 @@ def run(args):
         predator_avg = np.mean([g.fitness for g in predator_pop.population.values()])
         prey_avg = np.mean([g.fitness for g in prey_pop.population.values()])
         
-        # Update the custom reporter with best and average fitness values.
         coevo_plot_reporter.post_evaluate(
             gen,
             best_predator.fitness if best_predator.fitness is not None else 0,
@@ -302,7 +298,7 @@ def run(args):
             prey_config, prey_pop.population, prey_pop.species, best_prey
         )
         
-        # --- NEW: Occasional human render demonstration ---
+        # Occasional human render demonstration.
         if gen % 10 == 0 and gen != 0:
             print(f"\n*** Human Render Demonstration at Generation {gen} ***")
             run_best(best_predator, predator_config, best_prey, prey_config, args)
@@ -330,9 +326,9 @@ def run(args):
     coevo_plot_reporter.fig.savefig("final_rewards_graph.png")
     print("Final rewards graph saved as 'final_rewards_graph.png'")
     
-    # Optionally, run final demonstration episodes:
-    # run_best(best_predator, predator_config, best_prey, prey_config, args)
-    # run_best_video(best_predator, predator_config, best_prey, prey_config, args)
+    # Run final video demonstration with the best genomes.
+    print("\n*** Running final video demonstration ***")
+    run_best_video(best_predator, predator_config, best_prey, prey_config, args)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
@@ -340,7 +336,7 @@ if __name__ == '__main__':
     )
     parser.add_argument('--config_predator', default='predator_config.txt', type=str,
                         help='Path to the predator config file')
-    parser.add_argument('--config_prey', default='prey_predator_foraging_config.txt', type=str,
+    parser.add_argument('--config_prey', default='prey_predator_retrieval_config.txt', type=str,
                         help='Path to the prey config file')
     parser.add_argument('--render', default='cpu', type=str,
                         help='Render mode during evolution (video or cpu)')

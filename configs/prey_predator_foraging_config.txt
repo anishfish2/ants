@@ -37,11 +37,11 @@ conn_delete_prob        = 0.5
 enabled_default         = True
 enabled_mutate_rate     = 0.01
 
-feed_forward            = False
-initial_connection      = unconnected
+feed_forward            = True
+initial_connection      = full
 
 # Node add/remove rates.
-node_add_prob           = 0.5
+node_add_prob           = 0.2
 node_delete_prob        = 0.2
 
 # Network parameters.

@@ -12,7 +12,6 @@ class ant():
         self.location = {'x': 0, 'y': 0}
         self.current_angle = 0
         self.cargo = 0        # Current cargo load.
-        self.max_cargo = 1    # Maximum food items the agent can carry.
 
     def update_angle(self, angle_diff):
         self.current_angle += angle_diff
@@ -22,3 +21,16 @@ class ant():
         dy = distance * numpy.sin(self.current_angle)
         self.location['x'] += dx
         self.location['y'] += dy
+
+class Predator(ant):
+    def __init__(self):
+        super().__init__()
+        self.role = 'predator'
+
+class Prey(ant):
+    def __init__(self):
+        super().__init__()
+        self.role = 'prey'
+        # Prey now carries cargo attributes.
+        self.cargo = 0
+        self.max_cargo = 1
