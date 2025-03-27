@@ -6,6 +6,7 @@ import os
 import argparse
 import importlib
 import matplotlib.pyplot as plt
+import numpy as np
 
 def eval_genomes(genomes, config, args):
     try:
@@ -33,8 +34,9 @@ def eval_genomes(genomes, config, args):
         # TDNN instead of feed forward NN
         # net = TDNN.create(genome, config)
         while env.ants:
-            actions = {ant: net.activate(env.state[ant]) for ant in env.ants}
+            actions = {ant: np.argmax(net.activate(env.state[ant])) for ant in env.ants}
             observations, rewards, terminations = env.step(actions)
+            # print('fitness', genome.fitness, rewards)
             genome.fitness += sum(rewards.values())
         # Record the food-delivered count for this episode into the genome.
         genome.delivered_count = getattr(env, 'food_delivered_count', 0)
@@ -64,9 +66,10 @@ def view_winner(winner, config, args):
     net = neat.nn.FeedForwardNetwork.create(winner, config)
     while env.ants:
         actions = {ant: net.activate(env.state[ant]) for ant in env.ants}
+        print("Network output:", [net.activate(env.state[ant]) for ant in env.ants]) # Debugging
         observations, rewards, terminations = env.step(actions)
         winner.fitness += sum(rewards.values())
-    print("Winner fitness:", winner.fitness)
+    print("Winner fitness:", winner.fitness) 
     env.close()
 
 def run(config_file, args):
@@ -74,9 +77,9 @@ def run(config_file, args):
                          neat.DefaultSpeciesSet, neat.DefaultStagnation,
                          config_file)
     p = neat.Population(config)
-    p.add_reporter(neat.StdOutReporter(True))
-    p.add_reporter(FitnessPlotReporter())
-    p.add_reporter(FoodDeliveredPlotReporter())
+    # p.add_reporter(neat.StdOutReporter(True))
+    # p.add_reporter(FitnessPlotReporter())
+    # p.add_reporter(FoodDeliveredPlotReporter())
     stats = neat.StatisticsReporter()
     p.add_reporter(stats)
     winner = p.run(lambda genomes, config: eval_genomes(genomes, config, args), args.episodes)
@@ -97,6 +100,7 @@ class FitnessPlotReporter(neat.reporting.BaseReporter):
         self.generations.append(gen)
         self.best_fitness.append(best_genome.fitness)
         
+        print("Network output:", net.activate(env.state[ant])) 
         self.ax.clear()
         self.ax.plot(self.generations, self.best_fitness, marker='o', linestyle='-')
         self.ax.set_title("Best Fitness Over Generations")

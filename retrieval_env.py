@@ -157,21 +157,26 @@ class parallel_env(ParallelEnv):
             food_x = [f.location['x'] for f in self.food if not f.picked_up]
             food_y = [f.location['y'] for f in self.food if not f.picked_up]
             self.food_scatter.set_offsets(np.c_[food_x, food_y])
-            # Remove previous observation range circles.
+            # Remove previous observation range circles and sensor segments.
             for circ in self.obs_circles:
                 circ.remove()
             self.obs_circles = []
-            # For each agent, draw a dashed circle representing the observation range.
+            # For each agent, draw a dashed circle representing the observation range and sensor segments.
             for a in self.ants:
                 circ = plt.Circle((a.location['x'], a.location['y']), self.ant_range_radius,
-                                  color='gray', fill=False, linestyle='--')
+                                color='gray', fill=False, linestyle='--')
                 self.obs_circles.append(circ)
                 self.ax.add_patch(circ)
+                # Draw the sensor segments.
+                section_angle = 360 / 8
+                for i in range(8):
+                    angle = np.radians(i * section_angle)
+                    x_end = a.location['x'] + self.ant_range_radius * np.cos(angle)
+                    y_end = a.location['y'] + self.ant_range_radius * np.sin(angle)
+                    self.ax.plot([a.location['x'], x_end], [a.location['y'], y_end], color='gray', linestyle='--')
             plt.draw()
             plt.pause(0.1)
-        elif self.render_mode == "video":
-            # Video rendering is handled by make_video().
-            pass
+    
 
     def close(self):
         if self.render_mode == "human":
@@ -227,11 +232,11 @@ class parallel_env(ParallelEnv):
             self.ant_angle_log[a].append(a.current_angle)
             self.ant_cargo_log[a].append(a.cargo)
             action = np.argmax(actions[a])
-            if action == 0:
+            if action == 2:
                 a.update_angle(np.pi / 4)  # Turn left.
             elif action == 1:
                 a.update_angle(-np.pi / 4)  # Turn right.
-            elif action == 2:
+            elif action == 0:
                 a.update_location(1)  # Move forward.
             # Keep the agent in bounds.
             if not (-self.size <= a.location['x'] <= self.size and -self.size <= a.location['y'] <= self.size):
@@ -243,7 +248,7 @@ class parallel_env(ParallelEnv):
                     if not f.picked_up and euclidean_distance(a.location, f.location) < 5:
                         f.picked_up = True
                         a.cargo += 1
-                        rewards[a] += 50  # Reward for pickup.
+                        rewards[a] += 100  # Reward for pickup.
 
             # If carrying food, check for delivery at home base.
             if a.cargo > 0:
@@ -252,7 +257,7 @@ class parallel_env(ParallelEnv):
                     self.food_delivered_count += 1
                     a.cargo = 0
 
-            shaping_factor = 0.5
+            shaping_factor = 5
             if a.cargo == 0:
                 # When not carrying food, reward moving closer to the nearest available food.
                 available_food = [f for f in self.food if not f.picked_up]
@@ -265,6 +270,8 @@ class parallel_env(ParallelEnv):
                 prev_dist = euclidean_distance(previous_positions[a], self.home_base)
                 curr_dist = euclidean_distance(a.location, self.home_base)
                 rewards[a] += (prev_dist - curr_dist) * shaping_factor
+
+        rewards[a] -= .1
         observations = {a: self.get_observation(a) for a in self.ants}
         self.state = observations
 
@@ -322,11 +329,18 @@ class parallel_env(ParallelEnv):
                     ax.scatter(loc['x'], loc['y'], s=100, color=color)
                     # Draw a quiver for the agent's heading.
                     ax.quiver(loc['x'], loc['y'], np.cos(angle), np.sin(angle),
-                              scale=20, color=color)
+                            scale=20, color=color)
                     # Draw the observation range as a dashed circle.
                     circ = plt.Circle((loc['x'], loc['y']), self.ant_range_radius,
-                                      color='gray', fill=False, linestyle='--')
+                                    color='gray', fill=False, linestyle='--')
                     ax.add_patch(circ)
+                    # Draw the sensor segments (dashed lines).
+                    section_angle = 360 / 8
+                    for j in range(8):
+                        angle = np.radians(j * section_angle)
+                        x_end = loc['x'] + self.ant_range_radius * np.cos(angle)
+                        y_end = loc['y'] + self.ant_range_radius * np.sin(angle)
+                        ax.plot([loc['x'], x_end], [loc['y'], y_end], color='gray', linestyle='--')
                 # Draw food positions.
                 for f in self.food:
                     if i < len(self.food_location_log[f]):
@@ -354,7 +368,6 @@ class parallel_env(ParallelEnv):
             # Clean up temporary frames.
             for frame_path in frame_paths:
                 os.remove(frame_path)
-            os.rmdir(frames_dir)
             return video_path
         else:
             return None

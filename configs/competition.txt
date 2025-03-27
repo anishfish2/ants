@@ -1,0 +1,50 @@
+# NEAT configuration file
+
+# General parameters
+[NEAT]
+fitness_criterion = max
+fitness_threshold = 100.0
+pop_size = 100
+reset_on_extinction = False
+elite_size = 5
+survival_threshold = 0.2
+
+# The number of generations the population should evolve
+max_gen = 100
+
+# Parameters for the evolution process
+[DefaultGenome]
+# Size of the input and output nodes in the genome.
+# 2 inputs (x and y positions) for predator and prey, 1 output per agent
+num_inputs = 2
+num_outputs = 1
+num_hidden = 10  # Number of hidden nodes
+
+# Node activation function
+activation = tanh
+
+# Parameters for mutation
+connection_fraction = 0.8
+mutate_add_node_prob = 0.05
+mutate_add_conn_prob = 0.1
+mutate_delete_node_prob = 0.01
+mutate_delete_conn_prob = 0.1
+mutate_weight_prob = 0.8
+mutate_weight_std = 0.5
+mutate_bias_prob = 0.5
+mutate_bias_std = 0.5
+
+# Crossover parameters
+crossover_rate = 0.7
+
+# Speciation parameters
+compatibility_threshold = 3.0
+compatibility_threshold_excess = 1.0
+compatibility_threshold_disjoint = 1.0
+compatibility_threshold_weight = 0.5
+
+# Genetic encoding of genome
+[DefaultReproduction]
+elitism = True
+elitism_proportion = 0.2
+tournament_size = 5
