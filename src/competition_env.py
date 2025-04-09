@@ -7,7 +7,7 @@ from pettingzoo import ParallelEnv
 import matplotlib
 matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
-from src.food import food
+from food import food
 
 class Agent:
     def __init__(self, x, y, agent_id):

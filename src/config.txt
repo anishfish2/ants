@@ -22,8 +22,16 @@ initial_connection      = full
 
 # node gene options
 num_hidden              = 0
-num_inputs              = 6  # x, y, angle, food_count for both agents
-num_outputs             = 3  # turn left, turn right, no turn
+num_inputs              = 6
+num_outputs             = 3
+
+# node add/remove rates
+node_add_prob           = 0.2
+node_delete_prob        = 0.2
+
+# connection add/remove rates
+conn_add_prob           = 0.5
+conn_delete_prob        = 0.5
 
 # node response options
 response_init_mean      = 0.0
@@ -41,6 +49,20 @@ weight_mutate_mean      = 0.0
 weight_mutate_stdev     = 0.5
 weight_max_value        = 30.0
 weight_min_value        = -30.0
+
+# connection enable options
+enabled_default         = True
+enabled_mutate_rate    = 0.01
+
+# node bias options
+bias_init_mean          = 0.0
+bias_init_stdev         = 1.0
+bias_max_value          = 30.0
+bias_min_value          = -30.0
+bias_mutate_mean        = 0.0
+bias_mutate_power       = 0.5
+bias_mutate_rate        = 0.7
+bias_replace_rate       = 0.1
 
 [DefaultSpeciesSet]
 compatibility_threshold = 3.0

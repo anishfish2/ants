@@ -1,11 +1,9 @@
 import os
 import neat
-import predator_prey_energy_env
 import numpy as np
 import random
-import importlib
 import matplotlib.pyplot as plt
-from src.competition_env import parallel_env
+from competition_env import parallel_env
 import pickle
 
 def eval_genomes(genomes, config):
