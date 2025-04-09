@@ -1,0 +1,54 @@
+[NEAT]
+fitness_criterion     = max
+fitness_threshold     = 1000
+pop_size             = 50
+reset_on_extinction   = False
+
+[DefaultGenome]
+# node activation options
+activation_default      = tanh
+activation_mutate_rate  = 0.1
+activation_options     = tanh sigmoid relu
+
+# genome compatibility options
+compatibility_disjoint_coefficient = 1.0
+compatibility_weight_coefficient   = 0.5
+
+# connection gene options
+enabled_default         = True
+enabled_mutate_rate     = 0.1
+feed_forward            = True
+initial_connection      = full
+
+# node gene options
+num_hidden              = 0
+num_inputs              = 6  # x, y, angle, food_count for both agents
+num_outputs             = 3  # turn left, turn right, no turn
+
+# node response options
+response_init_mean      = 0.0
+response_init_stdev     = 1.0
+response_mutate_mean    = 0.0
+response_mutate_rate    = 0.1
+response_mutate_stdev   = 0.1
+response_max_value      = 30.0
+response_min_value      = -30.0
+
+# connection gene options
+weight_init_mean        = 0.0
+weight_init_stdev       = 1.0
+weight_mutate_mean      = 0.0
+weight_mutate_stdev     = 0.5
+weight_max_value        = 30.0
+weight_min_value        = -30.0
+
+[DefaultSpeciesSet]
+compatibility_threshold = 3.0
+
+[DefaultStagnation]
+species_fitness_func = max
+max_stagnation       = 20
+
+[DefaultReproduction]
+elitism            = 2
+survival_threshold = 0.2 
