@@ -76,8 +76,8 @@ def run(config_path, num_generations=50):
     # Plot statistics
     plt.figure(figsize=(10, 5))
     plt.subplot(1, 2, 1)
-    plt.plot(stats.most_fit_genomes, 'b-', label="Most Fit")
-    plt.plot(stats.avg_fitness_history, 'r-', label="Average")
+    plt.plot([genome.fitness for genome in stats.most_fit_genomes], 'b-', label="Most Fit")
+    plt.plot(stats.get_fitness_mean(), 'r-', label="Average")
     plt.title("Fitness History")
     plt.xlabel("Generation")
     plt.ylabel("Fitness")

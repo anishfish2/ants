@@ -10,19 +10,24 @@ activation_default      = tanh
 activation_mutate_rate  = 0.1
 activation_options     = tanh sigmoid relu
 
+# node aggregation options
+aggregation_default     = sum
+aggregation_mutate_rate = 0.0
+aggregation_options     = sum
+
 # genome compatibility options
 compatibility_disjoint_coefficient = 1.0
 compatibility_weight_coefficient   = 0.5
 
 # connection gene options
 enabled_default         = True
-enabled_mutate_rate     = 0.1
+enabled_mutate_rate     = 0.01
 feed_forward            = True
 initial_connection      = full
 
 # node gene options
 num_hidden              = 0
-num_inputs              = 6
+num_inputs              = 7
 num_outputs             = 3
 
 # node add/remove rates
@@ -39,6 +44,8 @@ response_init_stdev     = 1.0
 response_mutate_mean    = 0.0
 response_mutate_rate    = 0.1
 response_mutate_stdev   = 0.1
+response_mutate_power   = 0.5
+response_replace_rate   = 0.1
 response_max_value      = 30.0
 response_min_value      = -30.0
 
@@ -49,10 +56,9 @@ weight_mutate_mean      = 0.0
 weight_mutate_stdev     = 0.5
 weight_max_value        = 30.0
 weight_min_value        = -30.0
-
-# connection enable options
-enabled_default         = True
-enabled_mutate_rate    = 0.01
+weight_replace_rate     = 0.1
+weight_mutate_rate     = 0.8
+weight_mutate_power     = 0.5
 
 # node bias options
 bias_init_mean          = 0.0
